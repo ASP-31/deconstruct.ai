@@ -18,7 +18,8 @@ function getBlobConfig() {
   return {
     token,
     storeId,
-    endpoint: `https://${storeId}.blob.vercel-storage.com`,
+    // Vercel Blob S3 endpoint uses lowercase store ID
+    endpoint: `https://${storeId.toLowerCase()}.blob.vercel-storage.com`,
     region: 'auto',
   };
 }
@@ -100,5 +101,5 @@ export async function deleteObject(key: string): Promise<void> {
 export function getPublicUrl(key: string): string | null {
   const config = getBlobConfig();
   if (!config) return null;
-  return `${config.endpoint}/${key}`;
+  return `https://${config.storeId.toLowerCase()}.blob.vercel-storage.com/${key}`;
 }
