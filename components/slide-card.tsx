@@ -47,12 +47,12 @@ export function SlideCard({ slide, index, active, resolved, onJump }: SlideCardP
         <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
           {safeDescription}
         </p>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <Badge variant="outline" className="border-border/60 bg-background/40 font-mono">
-            <FileCode2 className="mr-1 h-3 w-3" />
-            {safePath}
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+          <Badge variant="outline" className="min-w-0 max-w-full border-border/60 bg-background/40 font-mono">
+            <FileCode2 className="mr-1 h-3 w-3 shrink-0" />
+            <span className="truncate">{safePath}</span>
           </Badge>
-          <Badge variant="secondary">
+          <Badge variant="secondary" className="shrink-0">
             L{slide.startLine}–L{slide.endLine}
           </Badge>
         </div>

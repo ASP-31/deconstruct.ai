@@ -1,15 +1,14 @@
 const PROMPT_INJECTION_PATTERNS: RegExp[] = [
   /ignore (the )?(previous|above|prior) (instructions|prompt)/i,
   /disregard (the )?(system|previous) (prompt|message)/i,
-  /you are now/i,
-  /act as (an? )?(?!assistant)/i,
-  /system:\s/i,
-  /<\/?system>/i,
-  /reveal (the )?(system|hidden) prompt/i,
+  /ignore all (previous|above|prior) instructions/i,
+  /ignore everything above/i,
+  /disregard everything (above|before)/i,
+  /you are now (and (will|must) )?(ignore|disregard)/i,
+  /forget (all |the )?(previous|above|prior) (instructions|prompt)/i,
+  /reveal (the )?(system|hidden) (prompt|instructions)/i,
+  /print (the |your )?system prompt/i,
   /exfiltrate/i,
-  /curl\s+https?:\/\//i,
-  /\bexec\s*\(/i,
-  /\beval\s*\(/i,
 ];
 
 const SECRET_PATTERNS: RegExp[] = [

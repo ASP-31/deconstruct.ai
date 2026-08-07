@@ -230,7 +230,7 @@ export function Workspace() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_420px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_minmax(340px,460px)]">
         <aside className="hidden border-r border-border/60 bg-card/30 lg:block">
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

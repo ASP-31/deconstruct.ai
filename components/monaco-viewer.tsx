@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type * as Monaco from 'monaco-editor';
 import { detectLanguageFromPath } from '@/utils/language';
 
@@ -25,6 +25,21 @@ export function MonacoViewer({
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
   const decorationsRef = useRef<string[]>([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    import('./monaco-setup')
+      .then(() => {
+        if (!cancelled) setReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const resolvedLanguage = language ?? detectLanguageFromPath(path);
 
@@ -73,20 +88,26 @@ export function MonacoViewer({
 
   return (
     <div className={className}>
-      <Editor
-        height="100%"
-        path={path}
-        value={value}
-        language={resolvedLanguage}
-        theme="vs-dark"
-        onMount={handleMount}
-        loading={
-          <div className="grid h-full place-items-center text-sm text-muted-foreground">
-            Loading editor…
-          </div>
-        }
-        options={{ readOnly: true, domReadOnly: true }}
-      />
+      {!ready ? (
+        <div className="grid h-full place-items-center text-sm text-muted-foreground">
+          Loading editor…
+        </div>
+      ) : (
+        <Editor
+          height="100%"
+          path={path}
+          value={value}
+          language={resolvedLanguage}
+          theme="vs-dark"
+          onMount={handleMount}
+          loading={
+            <div className="grid h-full place-items-center text-sm text-muted-foreground">
+              Loading editor…
+            </div>
+          }
+          options={{ readOnly: true, domReadOnly: true }}
+        />
+      )}
     </div>
   );
 }
