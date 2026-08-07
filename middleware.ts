@@ -1,23 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-const NONCE_BYTES = 16;
-
-function generateNonce(): string {
-  const bytes = new Uint8Array(NONCE_BYTES);
-  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
 const BASE_CSP = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -27,15 +9,10 @@ const BASE_CSP = [
   "upgrade-insecure-requests",
 ];
 
-function buildCsp(nonce: string): string {
-  const isDev = process.env.NODE_ENV === 'development';
-  const scriptSrc = isDev
-    ? `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval' blob: 'unsafe-inline'`
-    : `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval' blob: 'unsafe-inline'`;
-
+function buildCsp(): string {
   const directives = [
     ...BASE_CSP,
-    scriptSrc,
+    `script-src 'self' 'wasm-unsafe-eval' blob: 'unsafe-inline'`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
@@ -47,8 +24,8 @@ function buildCsp(nonce: string): string {
   return directives.join('; ');
 }
 
-function applySecurityHeaders(response: NextResponse, nonce: string): NextResponse {
-  response.headers.set('Content-Security-Policy', buildCsp(nonce));
+function applySecurityHeaders(response: NextResponse): NextResponse {
+  response.headers.set('Content-Security-Policy', buildCsp());
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -68,15 +45,8 @@ function applySecurityHeaders(response: NextResponse, nonce: string): NextRespon
 }
 
 export function middleware(request: NextRequest) {
-  const nonce = generateNonce();
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-nonce', nonce);
-
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
-  response.headers.set('x-nonce', nonce);
-  return applySecurityHeaders(response, nonce);
+  const response = NextResponse.next();
+  return applySecurityHeaders(response);
 }
 
 export const config = {

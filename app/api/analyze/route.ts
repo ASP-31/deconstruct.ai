@@ -13,6 +13,14 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '50mb',
+    },
+  },
+};
+
 const MAX_REQUEST_BYTES = 50 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;

@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "app/api/analyze/route.ts": {
+      "maxDuration": 60,
+      "runtime": "nodejs18.x"
+    }
+  },
+  "bodyParser": {
+    "sizeLimit": "50mb"
+  }
+}
