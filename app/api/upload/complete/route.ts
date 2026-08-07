@@ -91,9 +91,9 @@ export async function POST(request: Request) {
 
     key = generateUploadKey();
 
-    await uploadToBlob(key, file);
+    const { downloadUrl } = await uploadToBlob(key, file);
 
-    const buffer = await getObjectBuffer(key);
+    const buffer = await getObjectBuffer(downloadUrl);
 
     const { fileTree, files } = await parseProjectZip(buffer);
 

@@ -10,23 +10,25 @@ export function generateUploadKey(): string {
   return `uploads/${timestamp}-${random}.zip`;
 }
 
-export async function uploadToBlob(key: string, file: File): Promise<string> {
+export interface BlobUploadResult {
+  key: string;
+  downloadUrl: string;
+}
+
+export async function uploadToBlob(key: string, file: File): Promise<BlobUploadResult> {
   if (!isBlobConfigured()) throw new Error('Vercel Blob not configured');
 
   const blob = await put(key, file, {
-    access: 'public',
+    access: 'private',
     token: process.env.BLOB_READ_WRITE_TOKEN,
   });
-  return blob.url;
+  return { key, downloadUrl: blob.url };
 }
 
-export async function getObjectBuffer(key: string): Promise<Buffer> {
+export async function getObjectBuffer(downloadUrl: string): Promise<Buffer> {
   if (!isBlobConfigured()) throw new Error('Vercel Blob not configured');
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN!;
-  const response = await fetch(`https://${token.split('_')[3]}.public.blob.vercel-storage.com/${key}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetch(downloadUrl);
   if (!response.ok) throw new Error('Failed to fetch object');
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
@@ -39,7 +41,5 @@ export async function deleteObject(key: string): Promise<void> {
 }
 
 export function getPublicUrl(key: string): string | null {
-  if (!isBlobConfigured()) return null;
-  const token = process.env.BLOB_READ_WRITE_TOKEN!;
-  return `https://${token.split('_')[3]}.public.blob.vercel-storage.com/${key}`;
+  return null;
 }
