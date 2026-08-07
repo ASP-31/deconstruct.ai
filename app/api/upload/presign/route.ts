@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createPresignedUploadUrl, generateUploadKey } from '@/lib/blob';
+import { createPresignedUploadUrl, generateUploadKey, isBlobConfigured } from '@/lib/blob';
 import { rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 
@@ -10,6 +10,11 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 10;
 
 export async function POST(request: Request) {
+  if (!isBlobConfigured()) {
+    logger.error('presign', { message: 'Blob not configured', hasToken: !!process.env.BLOB_READ_WRITE_TOKEN });
+    return NextResponse.json({ error: 'Storage not configured. Check BLOB_READ_WRITE_TOKEN.' }, { status: 503 });
+  }
+
   const limit = rateLimit(request.headers, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     max: RATE_LIMIT_MAX,
@@ -45,7 +50,8 @@ export async function POST(request: Request) {
       expiresIn: 3600,
     });
   } catch (err) {
-    logger.error('presign', err);
-    return NextResponse.json({ error: 'Failed to generate upload URL.' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    logger.error('presign', { message: 'Presign failed', error: message });
+    return NextResponse.json({ error: `Failed to generate upload URL: ${message}` }, { status: 500 });
   }
 }
