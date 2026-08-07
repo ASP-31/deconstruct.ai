@@ -14,7 +14,7 @@ The platform parses the project structure, identifies execution entry points, an
 
 ## ⚡ Fast Project Ingestion
 
-- Drag-and-drop project ZIP upload (up to **500MB** via Cloudflare R2)
+- Drag-and-drop project ZIP upload (up to **500MB** via Vercel Blob)
 - Automatic extraction using `adm-zip`
 - Smart filtering of unnecessary directories:
   - `node_modules`
@@ -104,7 +104,7 @@ Features include:
 | **shadcn/ui** | UI Components |
 | **Monaco Editor** | VS Code Editing Experience |
 | **Google Gemini API** | AI Architecture Analysis |
-| **Cloudflare R2** | Object Storage (unlimited uploads) |
+| **Vercel Blob** | Object Storage (500MB+ uploads) |
 | **adm-zip** | ZIP Extraction |
 | **TypeScript** | Type Safety |
 
@@ -153,7 +153,7 @@ Before running the project, you'll need:
 - Node.js 18+
 - npm
 - Google Gemini API Key
-- Cloudflare R2 Account (for >4MB uploads)
+- Vercel Account (for Blob storage - auto-configured on deploy)
 
 Get your API key from:
 
@@ -195,21 +195,21 @@ Add:
 # Required: Google Gemini API
 GEMINI_API_KEY=your_actual_api_key_here
 
-# Required for >4MB uploads: Cloudflare R2
-R2_ACCOUNT_ID=your_account_id
-R2_ACCESS_KEY_ID=your_access_key_id
-R2_SECRET_ACCESS_KEY=your_secret_access_key
-R2_BUCKET=your_bucket_name
-R2_PUBLIC_URL=https://pub-xxx.r2.dev  # Optional: custom domain for public access
+# Required for >4MB uploads: Vercel Blob
+# Auto-created when you add Blob Storage in Vercel Dashboard
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_xxx
 ```
 
-### Setting up Cloudflare R2
+### Setting up Vercel Blob (Local Development)
 
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → **R2 Object Storage**
-2. Create a bucket (e.g., `deconstruct-uploads`)
-3. Go to **Manage R2 API Tokens** → Create API Token with **Object Read & Write** permissions
-4. Copy the **Account ID**, **Access Key ID**, **Secret Access Key**
-5. (Optional) Enable **Public Access** on the bucket and set a custom domain for `R2_PUBLIC_URL`
+1. Go to [Vercel Dashboard](https://vercel.com/dashboard) → **Storage** → **Create Database** → **Blob**
+2. Name it (e.g., `deconstruct-uploads`)
+3. Copy the **Read/Write Token** (starts with `vercel_blob_rw_`)
+4. Add to `.env.local` as `BLOB_READ_WRITE_TOKEN`
+
+### On Vercel Deploy
+
+Blob Storage is **auto-linked** when you create it in the same Vercel project - no env vars needed.
 
 ---
 
@@ -410,7 +410,7 @@ Deconstruct.ai answers these questions automatically, transforming complex codeb
 
 It helps support development and motivates future improvements.
 
-**Built with ❤️ using Next.js, Monaco Editor, Tailwind CSS, shadcn/ui, Google Gemini AI, and Cloudflare R2.**
+**Built with ❤️ using Next.js, Monaco Editor, Tailwind CSS, shadcn/ui, Google Gemini AI, and Vercel Blob.**
 
 ---
 
@@ -420,16 +420,15 @@ It helps support development and motivates future improvements.
 
 1. Push to GitHub
 2. Import project in [Vercel Dashboard](https://vercel.com/new)
-3. Add environment variables:
+3. **Add Blob Storage**: Vercel Dashboard → Storage → Create → Blob
+4. Add environment variable:
    - `GEMINI_API_KEY` (required)
-   - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (for >4MB uploads)
-   - `R2_PUBLIC_URL` (optional, for public asset URLs)
-4. Deploy
+5. Deploy
 
 ### One-click Deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyour-username%2Fdeconstruct-ai&env=GEMINI_API_KEY,R2_ACCOUNT_ID,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY,R2_BUCKET&envDescription=Required%20environment%20variables&envLink=https%3A%2F%2Fgithub.com%2Fyour-username%2Fdeconstruct-ai%23setting-up-cloudflare-r2)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyour-username%2Fdeconstruct-ai&env=GEMINI_API_KEY&envDescription=Required%20environment%20variables)
 
 ## Other Platforms
 
-The app works on any Node.js hosting (Railway, Render, Fly.io, etc.) - just set the same environment variables.
+The app works on any Node.js hosting (Railway, Render, Fly.io, etc.) - set `GEMINI_API_KEY` and `BLOB_READ_WRITE_TOKEN` (from Vercel Blob or compatible S3).

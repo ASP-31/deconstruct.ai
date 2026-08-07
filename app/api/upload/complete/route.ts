@@ -9,10 +9,18 @@ import {
   sanitizeUserContent,
   wrapUntrusted,
 } from '@/lib/security';
-import { getObjectBuffer, deleteObject } from '@/lib/r2';
+import { uploadToBlob, getObjectBuffer, deleteObject, generateUploadKey, isBlobConfigured } from '@/lib/blob';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '500mb',
+    },
+  },
+};
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
@@ -67,11 +75,23 @@ export async function POST(request: Request) {
   try {
     ensureApiKey();
 
-    const { key: objectKey } = await request.json();
-    if (!objectKey || typeof objectKey !== 'string') {
-      return clientError('Missing object key.');
+    const contentType = request.headers.get('content-type') ?? '';
+    if (!contentType.toLowerCase().includes('multipart/form-data')) {
+      return clientError('Expected a multipart/form-data upload.');
     }
-    key = objectKey;
+
+    const formData = await request.formData();
+    const file = formData.get('file');
+    if (!(file instanceof File)) {
+      return clientError('No project archive file provided.');
+    }
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      return clientError('Please upload a .zip archive.');
+    }
+
+    key = generateUploadKey();
+
+    await uploadToBlob(key, file);
 
     const buffer = await getObjectBuffer(key);
 
