@@ -1,4 +1,4 @@
-import { put, del } from '@vercel/blob';
+import { put } from '@vercel/blob';
 
 export function isBlobConfigured(): boolean {
   return !!process.env.BLOB_READ_WRITE_TOKEN;
@@ -10,19 +10,21 @@ export function generateUploadKey(): string {
   return `uploads/${timestamp}-${random}.zip`;
 }
 
-export interface BlobUploadResult {
+export interface PresignResult {
+  uploadUrl: string;
   key: string;
   downloadUrl: string;
 }
 
-export async function uploadToBlob(key: string, file: File): Promise<BlobUploadResult> {
+export async function createPresignedUploadUrl(key: string): Promise<PresignResult> {
   if (!isBlobConfigured()) throw new Error('Vercel Blob not configured');
 
-  const blob = await put(key, file, {
+  const result = await put(key, new ReadableStream(), {
     access: 'private',
     token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
-  return { key, downloadUrl: blob.url };
+    multipart: true,
+  }) as unknown as { url: string; uploadUrl: string };
+  return { uploadUrl: result.uploadUrl, key, downloadUrl: result.url };
 }
 
 export async function getObjectBuffer(downloadUrl: string): Promise<Buffer> {
@@ -37,6 +39,7 @@ export async function getObjectBuffer(downloadUrl: string): Promise<Buffer> {
 export async function deleteObject(key: string): Promise<void> {
   if (!isBlobConfigured()) throw new Error('Vercel Blob not configured');
 
+  const { del } = await import('@vercel/blob');
   await del(key, { token: process.env.BLOB_READ_WRITE_TOKEN });
 }
 

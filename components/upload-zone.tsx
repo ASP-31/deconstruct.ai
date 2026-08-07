@@ -39,17 +39,32 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
       setStage('uploading');
 
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const res = await fetch('/api/upload/complete', {
+        const presignRes = await fetch('/api/upload/presign', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contentType: file.type || 'application/zip' }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
+        const presignData = await presignRes.json();
+        if (!presignRes.ok) throw new Error(presignData.error ?? 'Failed to get upload URL');
 
-        const result: AnalysisResult = data;
+        const uploadRes = await fetch(presignData.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type || 'application/zip' },
+        });
+        if (!uploadRes.ok) throw new Error('Upload to storage failed');
+
+        setStage('analyzing');
+
+        const completeRes = await fetch('/api/upload/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: presignData.key, downloadUrl: presignData.downloadUrl }),
+        });
+        const completeData = await completeRes.json();
+        if (!completeRes.ok) throw new Error(completeData.error ?? 'Analysis failed');
+
+        const result: AnalysisResult = completeData;
         sessionStorage.setItem('deconstruct:analysis', JSON.stringify(result));
         router.push('/workspace');
       } catch (err) {
