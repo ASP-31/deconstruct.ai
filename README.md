@@ -12,7 +12,7 @@ The platform parses the project structure, identifies execution entry points, an
 
 ## ⚡ Fast Project Ingestion
 
-- Drag-and-drop project ZIP upload
+- Drag-and-drop project ZIP upload (up to **500MB** via Cloudflare R2)
 - Automatic extraction using `adm-zip`
 - Smart filtering of unnecessary directories:
   - `node_modules`
@@ -102,6 +102,7 @@ Features include:
 | **shadcn/ui** | UI Components |
 | **Monaco Editor** | VS Code Editing Experience |
 | **Google Gemini API** | AI Architecture Analysis |
+| **Cloudflare R2** | Object Storage (unlimited uploads) |
 | **adm-zip** | ZIP Extraction |
 | **TypeScript** | Type Safety |
 
@@ -150,6 +151,7 @@ Before running the project, you'll need:
 - Node.js 18+
 - npm
 - Google Gemini API Key
+- Cloudflare R2 Account (for >4MB uploads)
 
 Get your API key from:
 
@@ -188,8 +190,24 @@ Create a file named:
 Add:
 
 ```env
+# Required: Google Gemini API
 GEMINI_API_KEY=your_actual_api_key_here
+
+# Required for >4MB uploads: Cloudflare R2
+R2_ACCOUNT_ID=your_account_id
+R2_ACCESS_KEY_ID=your_access_key_id
+R2_SECRET_ACCESS_KEY=your_secret_access_key
+R2_BUCKET=your_bucket_name
+R2_PUBLIC_URL=https://pub-xxx.r2.dev  # Optional: custom domain for public access
 ```
+
+### Setting up Cloudflare R2
+
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → **R2 Object Storage**
+2. Create a bucket (e.g., `deconstruct-uploads`)
+3. Go to **Manage R2 API Tokens** → Create API Token with **Object Read & Write** permissions
+4. Copy the **Account ID**, **Access Key ID**, **Secret Access Key**
+5. (Optional) Enable **Public Access** on the bucket and set a custom domain for `R2_PUBLIC_URL`
 
 ---
 

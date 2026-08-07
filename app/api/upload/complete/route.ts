@@ -9,19 +9,11 @@ import {
   sanitizeUserContent,
   wrapUntrusted,
 } from '@/lib/security';
+import { getObjectBuffer, deleteObject } from '@/lib/r2';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-  },
-};
-
-const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
 
@@ -38,16 +30,6 @@ function ensureApiKey(): void {
 
 function clientError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
-}
-
-function isAcceptableFile(file: File): boolean {
-  if (file.size === 0) return false;
-  if (file.size > MAX_REQUEST_BYTES) return false;
-  const name = file.name.toLowerCase();
-  if (!name.endsWith('.zip')) return false;
-  const type = file.type.toLowerCase();
-  if (type && !/(zip|octet-stream|application\/x-zip)/.test(type)) return false;
-  return true;
 }
 
 function publicError(err: unknown): { status: number; message: string } {
@@ -80,39 +62,18 @@ export async function POST(request: Request) {
     );
   }
 
+  let key: string | null = null;
+
   try {
     ensureApiKey();
 
-    const contentType = request.headers.get('content-type') ?? '';
-    if (!contentType.toLowerCase().includes('multipart/form-data')) {
-      return clientError('Expected a multipart/form-data upload.');
+    const { key: objectKey } = await request.json();
+    if (!objectKey || typeof objectKey !== 'string') {
+      return clientError('Missing object key.');
     }
+    key = objectKey;
 
-    const contentLengthHeader = request.headers.get('content-length');
-    if (contentLengthHeader && Number(contentLengthHeader) > MAX_REQUEST_BYTES) {
-      return clientError('Upload exceeds the 4MB limit (Vercel free tier).');
-    }
-
-    let formData: FormData;
-    try {
-      formData = await request.formData();
-    } catch {
-      return clientError('Could not parse the uploaded form data.');
-    }
-
-    const file = formData.get('file');
-    if (!(file instanceof File)) {
-      return clientError('No project archive file provided.');
-    }
-    if (!isAcceptableFile(file)) {
-      return clientError('Please upload a non-empty .zip archive under 4MB.');
-    }
-
-    const arrayBuffer = await file.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_REQUEST_BYTES) {
-      return clientError('Upload exceeds the 4MB limit (Vercel free tier).');
-    }
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = await getObjectBuffer(key);
 
     const { fileTree, files } = await parseProjectZip(buffer);
 
@@ -174,6 +135,8 @@ Produce: projectOverview, entryPoints, slides (title, description, targetFile, s
     const architectureBlueprint = JSON.parse(responseText);
     validateBlueprint(architectureBlueprint, files);
 
+    await deleteObject(key);
+
     return NextResponse.json(
       { blueprint: architectureBlueprint, extractedFiles: files },
       {
@@ -185,6 +148,13 @@ Produce: projectOverview, entryPoints, slides (title, description, targetFile, s
     );
   } catch (err) {
     logger.error('analyze', err);
+    if (key) {
+      try {
+        await deleteObject(key);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
     const { status, message } = publicError(err);
     return NextResponse.json({ error: message }, { status });
   }
@@ -232,8 +202,4 @@ function matchClosestFile(target: string, filePaths: Set<string>): string {
     if (path.toLowerCase().endsWith(basename)) return path;
   }
   return target;
-}
-
-export function GET() {
-  return NextResponse.json({ error: 'Method not allowed.' }, { status: 405 });
 }

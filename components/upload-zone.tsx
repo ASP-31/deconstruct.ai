@@ -5,7 +5,6 @@ import { useCallback, useRef, useState } from 'react';
 import { ArrowUpFromLine, FileArchive, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { analyzeProjectArchive } from '@/services/analysis-service';
 import type { AnalysisResult } from '@/types/analysis';
 
 interface UploadZoneProps {
@@ -13,7 +12,7 @@ interface UploadZoneProps {
   className?: string;
 }
 
-const MAX_BYTES = 50 * 1024 * 1024;
+const MAX_BYTES = 500 * 1024 * 1024;
 
 export function UploadZone({ compact = false, className }: UploadZoneProps) {
   const router = useRouter();
@@ -21,6 +20,7 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [stage, setStage] = useState<'idle' | 'uploading' | 'analyzing'>('idle');
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -31,19 +31,47 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
         return;
       }
       if (file.size === 0 || file.size > MAX_BYTES) {
-        setError('Archive must be a non-empty .zip under 50MB.');
+        setError('Archive must be a non-empty .zip under 500MB.');
         return;
       }
 
       setLoading(true);
+      setStage('uploading');
+
       try {
-        const result: AnalysisResult = await analyzeProjectArchive(file);
+        const presignRes = await fetch('/api/upload/presign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contentType: file.type || 'application/zip' }),
+        });
+        const presignData = await presignRes.json();
+        if (!presignRes.ok) throw new Error(presignData.error ?? 'Failed to get upload URL');
+
+        const uploadRes = await fetch(presignData.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type || 'application/zip' },
+        });
+        if (!uploadRes.ok) throw new Error('Upload to storage failed');
+
+        setStage('analyzing');
+
+        const completeRes = await fetch('/api/upload/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: presignData.key }),
+        });
+        const completeData = await completeRes.json();
+        if (!completeRes.ok) throw new Error(completeData.error ?? 'Analysis failed');
+
+        const result: AnalysisResult = completeData;
         sessionStorage.setItem('deconstruct:analysis', JSON.stringify(result));
         router.push('/workspace');
       } catch (err) {
         setError((err as Error).message ?? 'Unknown error');
       } finally {
         setLoading(false);
+        setStage('idle');
       }
     },
     [router]
@@ -77,7 +105,11 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
         </div>
         <div>
           <p className="text-sm font-medium">
-            {loading ? 'Analyzing your project…' : 'Drop your project ZIP here'}
+            {loading
+              ? stage === 'uploading'
+                ? 'Uploading to storage…'
+                : 'Analyzing your project…'
+              : 'Drop your project ZIP here'}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             or click to browse — we filter out node_modules, .git, build outputs, and binaries.
@@ -93,7 +125,7 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
             <FileArchive className="h-4 w-4" />
             Select ZIP
           </Button>
-          <span className="text-xs text-muted-foreground">Up to 50MB</span>
+          <span className="text-xs text-muted-foreground">Up to 500MB</span>
         </div>
         <input
           ref={inputRef}
