@@ -1,7 +1,44 @@
-import { put, del } from '@vercel/blob';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
+function getBlobConfig() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return null;
+
+  // Token format: vercel_blob_rw_<storeId>_<secret>
+  const parts = token.split('_');
+  if (parts.length < 4) return null;
+
+  const storeId = parts[3];
+  return {
+    token,
+    storeId,
+    endpoint: `https://${storeId}.blob.vercel-storage.com`,
+    region: 'auto',
+  };
+}
+
+function getS3Client() {
+  const config = getBlobConfig();
+  if (!config) return null;
+
+  return new S3Client({
+    region: config.region,
+    endpoint: config.endpoint,
+    credentials: {
+      accessKeyId: config.storeId,
+      secretAccessKey: config.token,
+    },
+  });
+}
 
 export function isBlobConfigured(): boolean {
-  return !!process.env.BLOB_READ_WRITE_TOKEN;
+  return getBlobConfig() !== null;
 }
 
 export function generateUploadKey(): string {
@@ -17,23 +54,20 @@ export interface PresignResult {
 }
 
 export async function createPresignedUploadUrl(key: string): Promise<PresignResult> {
-  if (!isBlobConfigured()) throw new Error('Vercel Blob not configured');
+  const config = getBlobConfig();
+  if (!config) throw new Error('Vercel Blob not configured');
 
-  // For private stores, multipart upload returns a different structure
-  // Use put with multipart: true - it returns { url, uploadUrl } for multipart
-  const result = await put(key, new ReadableStream(), {
-    access: 'private',
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-    multipart: true,
+  const client = getS3Client();
+  if (!client) throw new Error('Failed to create S3 client');
+
+  const command = new PutObjectCommand({
+    Bucket: config.storeId,
+    Key: key,
+    ContentType: 'application/zip',
   });
 
-  // Handle both possible response formats
-  const uploadUrl = (result as { uploadUrl?: string; url: string }).uploadUrl;
-  const downloadUrl = (result as { url: string }).url;
-
-  if (!uploadUrl) {
-    throw new Error('Vercel Blob did not return uploadUrl for multipart upload. Check store configuration.');
-  }
+  const uploadUrl = await getSignedUrl(client, command, { expiresIn: 3600 });
+  const downloadUrl = `${config.endpoint}/${key}`;
 
   return { uploadUrl, key, downloadUrl };
 }
@@ -41,18 +75,30 @@ export async function createPresignedUploadUrl(key: string): Promise<PresignResu
 export async function getObjectBuffer(downloadUrl: string): Promise<Buffer> {
   if (!isBlobConfigured()) throw new Error('Vercel Blob not configured');
 
-  const response = await fetch(downloadUrl);
+  const response = await fetch(downloadUrl, {
+    headers: { Authorization: `Bearer ${process.env.BLOB_READ_WRITE_TOKEN}` },
+  });
   if (!response.ok) throw new Error('Failed to fetch object');
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
 
 export async function deleteObject(key: string): Promise<void> {
-  if (!isBlobConfigured()) throw new Error('Vercel Blob not configured');
+  const config = getBlobConfig();
+  if (!config) throw new Error('Vercel Blob not configured');
 
-  await del(key, { token: process.env.BLOB_READ_WRITE_TOKEN });
+  const client = getS3Client();
+  if (!client) throw new Error('Failed to create S3 client');
+
+  const command = new DeleteObjectCommand({
+    Bucket: config.storeId,
+    Key: key,
+  });
+  await client.send(command);
 }
 
 export function getPublicUrl(key: string): string | null {
-  return null;
+  const config = getBlobConfig();
+  if (!config) return null;
+  return `${config.endpoint}/${key}`;
 }
