@@ -3,9 +3,14 @@
     "app/api/analyze/route.ts": {
       "maxDuration": 60,
       "runtime": "nodejs18.x"
+    },
+    "app/api/upload/presign/route.ts": {
+      "maxDuration": 30,
+      "runtime": "nodejs18.x"
+    },
+    "app/api/upload/complete/route.ts": {
+      "maxDuration": 60,
+      "runtime": "nodejs18.x"
     }
-  },
-  "bodyParser": {
-    "sizeLimit": "50mb"
   }
 }
