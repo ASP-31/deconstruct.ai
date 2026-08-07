@@ -12,7 +12,7 @@ const BASE_CSP = [
 function buildCsp(): string {
   const directives = [
     ...BASE_CSP,
-    `script-src 'self' 'wasm-unsafe-eval' blob: 'unsafe-inline'`,
+    `script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: 'unsafe-inline'`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
