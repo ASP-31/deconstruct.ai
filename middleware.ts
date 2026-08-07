@@ -17,7 +17,7 @@ function buildCsp(): string {
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "worker-src 'self' blob:",
-    "connect-src 'self' https://generativelanguage.googleapis.com https://*.googleusercontent.com",
+    "connect-src 'self' https://generativelanguage.googleapis.com https://*.googleusercontent.com https://*.blob.vercel-storage.com",
     "manifest-src 'self'",
     "media-src 'self' blob:",
   ];
