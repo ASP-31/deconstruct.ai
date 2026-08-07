@@ -61,8 +61,11 @@ export async function createPresignedUploadUrl(key: string): Promise<PresignResu
   const client = getS3Client();
   if (!client) throw new Error('Failed to create S3 client');
 
+  // Use lowercase storeId for bucket to match DNS subdomain
+  const bucket = config.storeId.toLowerCase();
+  
   const command = new PutObjectCommand({
-    Bucket: config.storeId,
+    Bucket: bucket,
     Key: key,
     ContentType: 'application/zip',
   });
@@ -92,7 +95,7 @@ export async function deleteObject(key: string): Promise<void> {
   if (!client) throw new Error('Failed to create S3 client');
 
   const command = new DeleteObjectCommand({
-    Bucket: config.storeId,
+    Bucket: config.storeId.toLowerCase(),
     Key: key,
   });
   await client.send(command);
