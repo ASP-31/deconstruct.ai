@@ -1,16 +1,13 @@
 {
   "functions": {
     "app/api/analyze/route.ts": {
-      "maxDuration": 60,
-      "runtime": "nodejs18.x"
+      "maxDuration": 60
     },
     "app/api/upload/presign/route.ts": {
-      "maxDuration": 30,
-      "runtime": "nodejs18.x"
+      "maxDuration": 30
     },
     "app/api/upload/complete/route.ts": {
-      "maxDuration": 60,
-      "runtime": "nodejs18.x"
+      "maxDuration": 60
     }
   }
 }
