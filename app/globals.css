@@ -75,3 +75,11 @@ body,
   background-size: 200% 100%;
   animation: shimmer 3s linear infinite;
 }
+
+.deconstruct-highlight-line {
+  background: rgba(56, 189, 248, 0.12);
+}
+.deconstruct-highlight-margin {
+  background: rgba(56, 189, 248, 0.25);
+  border-left: 2px solid rgb(56, 189, 248);
+}

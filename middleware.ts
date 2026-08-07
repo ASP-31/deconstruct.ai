@@ -28,9 +28,14 @@ const BASE_CSP = [
 ];
 
 function buildCsp(nonce: string): string {
+  const isDev = process.env.NODE_ENV === 'development';
+  const scriptSrc = isDev
+    ? `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval' blob: 'unsafe-inline'`
+    : `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval' blob: 'unsafe-inline'`;
+
   const directives = [
     ...BASE_CSP,
-    `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval' blob:`,
+    scriptSrc,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",

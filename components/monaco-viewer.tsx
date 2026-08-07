@@ -87,15 +87,6 @@ export function MonacoViewer({
         }
         options={{ readOnly: true, domReadOnly: true }}
       />
-      <style jsx global>{`
-        .deconstruct-highlight-line {
-          background: rgba(56, 189, 248, 0.12);
-        }
-        .deconstruct-highlight-margin {
-          background: rgba(56, 189, 248, 0.25);
-          border-left: 2px solid rgb(56, 189, 248);
-        }
-      `}</style>
     </div>
   );
 }
