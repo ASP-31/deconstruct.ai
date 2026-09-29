@@ -1,6 +1,7 @@
 import 'server-only';
 import { GoogleGenAI, Type } from '@google/genai';
 import { getRequiredEnv } from '@/lib/env';
+import { logger } from '@/lib/logger';
 
 let cached: GoogleGenAI | null = null;
 
@@ -8,6 +9,73 @@ export function getAiClient(): GoogleGenAI {
   if (cached) return cached;
   cached = new GoogleGenAI({ apiKey: getRequiredEnv('GEMINI_API_KEY') });
   return cached;
+}
+
+const ANALYSIS_MODEL = 'gemini-flash-latest';
+const MAX_ATTEMPTS = 3;
+const TRANSIENT_PATTERN =
+  /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit/i;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientModelError(err: unknown): boolean {
+  if (err && typeof err === 'object') {
+    const status = (err as { status?: unknown }).status;
+    if (typeof status === 'number' && [429, 500, 502, 503, 504].includes(status)) {
+      return true;
+    }
+  }
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return TRANSIENT_PATTERN.test(message);
+}
+
+/**
+ * Calls Gemini with retry + backoff. Google's model backends periodically
+ * return transient 503 "high demand" / UNAVAILABLE errors; a short retry
+ * loop absorbs the blips instead of failing the whole analysis.
+ */
+export async function generateAnalysisText(params: {
+  systemInstruction: string;
+  userPrompt: string;
+}): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await getAiClient().models.generateContent({
+        model: ANALYSIS_MODEL,
+        contents: params.userPrompt,
+        config: {
+          systemInstruction: params.systemInstruction,
+          responseMimeType: 'application/json',
+          responseSchema: architectureResponseSchema,
+          temperature: 0.2,
+          maxOutputTokens: 8192,
+        },
+      });
+
+      const responseText = response.text;
+      if (!responseText) {
+        throw new Error('Empty operational payload returned from Gemini engine.');
+      }
+      return responseText;
+    } catch (err) {
+      lastError = err;
+      const transient = isTransientModelError(err);
+      logger.warn('gemini', {
+        message: 'generateContent attempt failed',
+        attempt,
+        transient,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      if (!transient || attempt === MAX_ATTEMPTS) break;
+      await delay(1500 * attempt);
+    }
+  }
+
+  throw lastError;
 }
 
 export const architectureResponseSchema = {
