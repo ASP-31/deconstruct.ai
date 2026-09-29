@@ -20,6 +20,7 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState<string | null>(null);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -40,21 +41,47 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
         const formData = new FormData();
         formData.append('file', file);
 
-        const res = await fetch('/api/upload/complete', {
-          method: 'POST',
-          body: formData,
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data?.blueprint) {
-          throw new Error(data?.error ?? 'Analysis failed');
+        const MAX_CLIENT_RETRIES = 2;
+        let lastError = 'Analysis failed';
+
+        for (let attempt = 0; attempt <= MAX_CLIENT_RETRIES; attempt += 1) {
+          if (attempt > 0) {
+            const waitSeconds = 10 * attempt;
+            for (let remaining = waitSeconds; remaining > 0; remaining -= 1) {
+              setStatusText(
+                `AI backend is busy — retrying automatically in ${remaining}s (attempt ${attempt + 1} of ${MAX_CLIENT_RETRIES + 1})…`
+              );
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
+          setStatusText('Analyzing your project…');
+
+          const res = await fetch('/api/upload/complete', {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await res.json().catch(() => null);
+
+          if (res.ok && data?.blueprint) {
+            saveAnalysis(data);
+            router.push('/workspace');
+            return;
+          }
+
+          lastError = data?.error ?? 'Analysis failed';
+          const retryable = res.status === 503 || res.status === 429;
+          if (!retryable) break;
         }
 
-        saveAnalysis(data);
-        router.push('/workspace');
+        throw new Error(lastError);
       } catch (err) {
         setError((err as Error).message ?? 'Unknown error');
       } finally {
         setLoading(false);
+        setStatusText(null);
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
       }
     },
     [router]
@@ -88,7 +115,7 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
         </div>
         <div>
           <p className="text-sm font-medium">
-            {loading ? 'Analyzing your project…' : 'Drop your project ZIP here'}
+            {statusText ?? (loading ? 'Analyzing your project…' : 'Drop your project ZIP here')}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             or click to browse — we filter out node_modules, .git, build outputs, and binaries.

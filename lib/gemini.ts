@@ -12,7 +12,7 @@ export function getAiClient(): GoogleGenAI {
 }
 
 const ANALYSIS_MODEL = 'gemini-flash-latest';
-const MAX_ATTEMPTS = 3;
+const MAX_ATTEMPTS = 4;
 const TRANSIENT_PATTERN =
   /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit/i;
 
@@ -71,7 +71,7 @@ export async function generateAnalysisText(params: {
         error: err instanceof Error ? err.message : String(err),
       });
       if (!transient || attempt === MAX_ATTEMPTS) break;
-      await delay(1500 * attempt);
+      await delay(2000 * 2 ** (attempt - 1));
     }
   }
 
