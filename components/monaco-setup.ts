@@ -3,36 +3,38 @@
 import { loader } from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
 
-const WORKER_CDN =
-  'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
-
-function cdnWorkerPath(label: string): string {
-  switch (label) {
-    case 'json':
-      return `${WORKER_CDN}/language/json/json.worker.js`;
-    case 'css':
-    case 'scss':
-    case 'less':
-      return `${WORKER_CDN}/language/css/css.worker.js`;
-    case 'html':
-    case 'handlebars':
-    case 'razor':
-      return `${WORKER_CDN}/language/html/html.worker.js`;
-    case 'typescript':
-    case 'javascript':
-      return `${WORKER_CDN}/language/typescript/ts.worker.js`;
-    default:
-      return `${WORKER_CDN}/editor/editor.worker.js`;
-  }
-}
-
-// Browsers refuse to construct a Worker directly from a cross-origin URL, so
-// the CDN worker is proxied through a same-origin blob: URL (allowed by the
-// CSP's `worker-src blob:`) which importScripts the real worker from the CDN.
+// Workers are bundled locally by webpack (same-origin chunks), which avoids
+// cross-origin worker restrictions, CDN downtime, and CSP exceptions entirely.
+// `getWorker` returns real Worker instances so no blob proxying is needed.
 (globalThis as unknown as Record<string, unknown>).MonacoEnvironment = {
-  getWorkerUrl(_: string, label: string) {
-    const bootstrap = `self.MonacoEnvironment={baseUrl:'${WORKER_CDN}/'};importScripts('${cdnWorkerPath(label)}');`;
-    return URL.createObjectURL(new Blob([bootstrap], { type: 'text/javascript' }));
+  getWorker(_moduleId: string, label: string): Worker {
+    switch (label) {
+      case 'json':
+        return new Worker(
+          new URL('monaco-editor/esm/vs/language/json/json.worker.js', import.meta.url)
+        );
+      case 'css':
+      case 'scss':
+      case 'less':
+        return new Worker(
+          new URL('monaco-editor/esm/vs/language/css/css.worker.js', import.meta.url)
+        );
+      case 'html':
+      case 'handlebars':
+      case 'razor':
+        return new Worker(
+          new URL('monaco-editor/esm/vs/language/html/html.worker.js', import.meta.url)
+        );
+      case 'typescript':
+      case 'javascript':
+        return new Worker(
+          new URL('monaco-editor/esm/vs/language/typescript/ts.worker.js', import.meta.url)
+        );
+      default:
+        return new Worker(
+          new URL('monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url)
+        );
+    }
   },
 };
 

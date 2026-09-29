@@ -28,6 +28,10 @@ function isTransientModelError(err: unknown): boolean {
     }
   }
   const message = err instanceof Error ? err.message : String(err ?? '');
+  // Daily quota exhaustion cannot be retried away within a request.
+  if (/PerDay|quotaMetric|RESOURCE_EXHAUSTED|check your plan and billing/i.test(message)) {
+    return false;
+  }
   return TRANSIENT_PATTERN.test(message);
 }
 

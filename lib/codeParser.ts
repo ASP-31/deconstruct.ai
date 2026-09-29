@@ -16,13 +16,29 @@ const IGNORED_DIRECTORIES = new Set([
   '.idea',
   '.vscode',
   '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  'venv',
+  '.venv',
+  'env',
+  'site-packages',
+  'dist-packages',
   '.svelte-kit',
   'target',
   'vendor',
   'Pods',
 ]);
 
-const IGNORED_FILES = new Set(['.ds_store', '__macosx', 'thumbs.db', 'desktop.ini']);
+const IGNORED_FILES = new Set([
+  '.ds_store',
+  '__macosx',
+  'thumbs.db',
+  'desktop.ini',
+  'cachedir.tag',
+  '.coverage',
+  'poetry.lock',
+]);
 
 const IGNORED_EXTENSIONS = new Set([
   '.png',
@@ -90,7 +106,6 @@ const TEXT_EXTENSIONS = new Set([
   '.yaml',
   '.toml',
   '.ini',
-  '.env',
   '.html',
   '.htm',
   '.css',
@@ -212,6 +227,9 @@ export async function parseProjectZip(
 
     if (segments.some((segment) => IGNORED_DIRECTORIES.has(segment))) continue;
     if (segments.some((segment) => IGNORED_FILES.has(segment.toLowerCase()))) continue;
+    // Never ship env/secret files to the AI backend.
+    const baseName = (segments[segments.length - 1] ?? '').toLowerCase();
+    if (baseName === '.env' || baseName.startsWith('.env.')) continue;
 
     const ext = path.extname(relativePath).toLowerCase();
     if (IGNORED_EXTENSIONS.has(ext)) continue;

@@ -109,6 +109,15 @@ export function Workspace() {
       blueprint: sanitizeBlueprint(stored.blueprint),
       extractedFiles: stored.extractedFiles,
     });
+    // Auto-open the first slide's target file (or the first file) so the
+    // editor is never an empty void on arrival.
+    const first =
+      stored.extractedFiles.find(
+        (file) => file.path === stored.blueprint.slides[0]?.targetFile
+      ) ?? stored.extractedFiles[0];
+    if (first) {
+      setActiveFile({ ...first, language: detectLanguageFromPath(first.path) });
+    }
   }, []);
 
   const tree = useMemo(() => {
@@ -227,8 +236,8 @@ export function Workspace() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_minmax(340px,460px)]">
-        <aside className="hidden border-r border-border/60 bg-card/30 lg:block">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_minmax(340px,460px)] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
+        <aside className="hidden min-h-0 border-r border-border/60 bg-card/30 lg:block">
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <FileCode2 className="h-3.5 w-3.5" />
@@ -246,7 +255,7 @@ export function Workspace() {
           </div>
         </aside>
 
-        <section className="flex min-h-0 flex-col">
+        <section className="flex min-h-0 min-w-0 flex-col">
           <div className="flex items-center justify-between border-b border-border/60 bg-card/30 px-4 py-2 text-xs">
             <div className="flex min-w-0 items-center gap-2">
               <FileCode2 className="h-3.5 w-3.5 shrink-0 text-sky-400" />
@@ -281,7 +290,7 @@ export function Workspace() {
           </div>
         </section>
 
-        <aside className="flex min-h-0 flex-col border-l border-border/60 bg-card/30">
+        <aside className="flex min-h-0 min-w-0 flex-col border-l border-border/60 bg-card/30">
           <Tabs defaultValue="slides" className="flex h-full min-h-0 flex-col">
             <div className="border-b border-border/60 px-4 py-3">
               <TabsList className="w-full">

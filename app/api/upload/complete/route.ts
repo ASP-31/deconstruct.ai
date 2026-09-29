@@ -47,6 +47,14 @@ function publicError(err: unknown): { status: number; message: string } {
   if (err instanceof Error) {
     if (err.name === 'AbortError') return { status: 499, message: 'Request aborted.' };
     if (err.message.includes('API key')) return { status: 503, message: 'Service unavailable.' };
+    if (err.message.includes('API key')) return { status: 503, message: 'Service unavailable.' };
+    if (/PerDay|RESOURCE_EXHAUSTED|check your plan and billing/i.test(err.message)) {
+      return {
+        status: 429,
+        message:
+          'Daily AI analysis quota exhausted. Free tier allows 20 analyses per day — try again tomorrow or upgrade the Gemini API plan.',
+      };
+    }
     if (
       /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit/i.test(
         err.message

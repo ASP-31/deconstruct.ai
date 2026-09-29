@@ -87,7 +87,7 @@ export function MonacoViewer({
   }, [highlightLines, value, path]);
 
   return (
-    <div className={className}>
+    <div className={`h-full w-full ${className ?? ''}`}>
       {!ready ? (
         <div className="grid h-full place-items-center text-sm text-muted-foreground">
           Loading editor…
