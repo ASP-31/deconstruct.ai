@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from 'react';
 import { ArrowUpFromLine, FileArchive, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { AnalysisResult } from '@/types/analysis';
+import { saveAnalysis } from '@/lib/analysis-cache';
 
 interface UploadZoneProps {
   compact?: boolean;
@@ -44,11 +44,12 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
           method: 'POST',
           body: formData,
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? 'Analysis failed');
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.blueprint) {
+          throw new Error(data?.error ?? 'Analysis failed');
+        }
 
-        const result: AnalysisResult = data;
-        sessionStorage.setItem('deconstruct:analysis', JSON.stringify(result));
+        saveAnalysis(data);
         router.push('/workspace');
       } catch (err) {
         setError((err as Error).message ?? 'Unknown error');

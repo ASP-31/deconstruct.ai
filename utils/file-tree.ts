@@ -10,7 +10,6 @@ export interface FileNode {
 
 function joinPath(parent: string, child: string): string {
   if (!parent) return child;
-  if (parent.endsWith('/')) return `${parent}${child}`;
   return `${parent}/${child}`;
 }
 

@@ -12,12 +12,12 @@ const BASE_CSP = [
 function buildCsp(): string {
   const directives = [
     ...BASE_CSP,
-    `script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: 'unsafe-inline'`,
+    `script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' blob: 'unsafe-inline' https://cdn.jsdelivr.net`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "worker-src 'self' blob:",
-    "connect-src 'self' https://generativelanguage.googleapis.com https://*.googleusercontent.com https://*.blob.vercel-storage.com",
+    "connect-src 'self' https://generativelanguage.googleapis.com https://*.googleusercontent.com https://*.blob.vercel-storage.com https://cdn.jsdelivr.net",
     "manifest-src 'self'",
     "media-src 'self' blob:",
   ];

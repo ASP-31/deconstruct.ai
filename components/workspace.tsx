@@ -28,6 +28,7 @@ import { buildFileTree, type FileNode } from '@/utils/file-tree';
 import { detectLanguageFromPath } from '@/utils/language';
 import { sanitizeMultiline, sanitizeFilePath } from '@/utils/sanitize';
 import { cn } from '@/lib/utils';
+import { loadAnalysis, clearAnalysis } from '@/lib/analysis-cache';
 import type {
   AnalysisResult,
   ArchitectureBlueprint,
@@ -99,21 +100,15 @@ export function Workspace() {
   } | null>(null);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('deconstruct:analysis');
-    if (!raw) return;
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (isAnalysisResult(parsed)) {
-        setData({
-          blueprint: sanitizeBlueprint(parsed.blueprint),
-          extractedFiles: parsed.extractedFiles,
-        });
-      }
-    } catch (err) {
-      console.error('Failed to parse stored analysis');
-    } finally {
-      sessionStorage.removeItem('deconstruct:analysis');
+    const stored = loadAnalysis();
+    if (!stored || !isAnalysisResult(stored)) {
+      clearAnalysis();
+      return;
     }
+    setData({
+      blueprint: sanitizeBlueprint(stored.blueprint),
+      extractedFiles: stored.extractedFiles,
+    });
   }, []);
 
   const tree = useMemo(() => {
@@ -167,7 +162,9 @@ export function Workspace() {
       const file = findFileForSlide(slide);
       if (file) setActiveFile(file);
       setActiveSlideIndex(index);
-      setActiveHighlight({ startLine: slide.startLine, endLine: slide.endLine });
+      // Only highlight when the slide's target file is actually displayed;
+      // otherwise the line numbers would point into an unrelated file.
+      setActiveHighlight(file ? { startLine: slide.startLine, endLine: slide.endLine } : null);
     },
     [findFileForSlide]
   );
@@ -349,9 +346,7 @@ export function Workspace() {
                       slide={slide}
                       index={index}
                       active={index === activeSlideIndex}
-                      resolved={Boolean(
-                        activeFile && activeFile.path === findFileForSlide(slide)?.path
-                      )}
+                      resolved={Boolean(findFileForSlide(slide))}
                       onJump={() => handleJumpToSlide(slide, index)}
                     />
                   ))}

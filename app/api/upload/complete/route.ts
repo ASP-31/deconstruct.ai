@@ -194,12 +194,8 @@ Produce: projectOverview, entryPoints, slides (title, description, targetFile, s
       }
     }
     const { status, message } = publicError(err);
-    // Include original error in response for debugging
-    return NextResponse.json({ 
-      error: message,
-      details: err instanceof Error ? err.message : 'Unknown error',
-      stack: err instanceof Error ? err.stack : undefined,
-    }, { status });
+    // Full details stay server-side via logger.error; never leak stacks to clients.
+    return NextResponse.json({ error: message }, { status });
   }
 }
 

@@ -22,6 +22,8 @@ const IGNORED_DIRECTORIES = new Set([
   'Pods',
 ]);
 
+const IGNORED_FILES = new Set(['.ds_store', '__macosx', 'thumbs.db', 'desktop.ini']);
+
 const IGNORED_EXTENSIONS = new Set([
   '.png',
   '.jpg',
@@ -139,7 +141,9 @@ function normalizePath(input: string): string {
 }
 
 function hasTraversal(segments: string[]): boolean {
-  return segments.some((segment) => segment === '..' || segment === '.');
+  // '.' segments are harmless normalization artifacts (e.g. './src/index.ts'),
+  // but '..' escapes the archive root and must always be rejected.
+  return segments.some((segment) => segment === '..');
 }
 
 function isProbablyText(buffer: Buffer): boolean {
@@ -199,7 +203,7 @@ export async function parseProjectZip(
     }
 
     const relativePath = normalizePath(rawPath);
-    const segments = relativePath.split('/').filter(Boolean);
+    const segments = relativePath.split('/').filter((segment) => segment && segment !== '.');
     if (segments.length === 0 || hasTraversal(segments)) {
       throw new UnsafeArchiveError(
         'Archive contains a path traversal sequence and was rejected.'
@@ -207,6 +211,7 @@ export async function parseProjectZip(
     }
 
     if (segments.some((segment) => IGNORED_DIRECTORIES.has(segment))) continue;
+    if (segments.some((segment) => IGNORED_FILES.has(segment.toLowerCase()))) continue;
 
     const ext = path.extname(relativePath).toLowerCase();
     if (IGNORED_EXTENSIONS.has(ext)) continue;

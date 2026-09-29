@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { analyzeProjectArchive } from '@/services/analysis-service';
 import type { AnalysisResult } from '@/types/analysis';
 
@@ -16,37 +16,46 @@ export function useProjectAnalysis() {
     data: null,
     error: null,
   });
-  const [controller, setController] = useState<AbortController | null>(null);
+  // A ref (not state) so abort/cleanup always targets the latest request
+  // even if `analyze` is invoked twice within one render cycle.
+  const controllerRef = useRef<AbortController | null>(null);
 
   const reset = useCallback(() => {
-    controller?.abort();
+    controllerRef.current?.abort();
+    controllerRef.current = null;
     setState({ status: 'idle', data: null, error: null });
-  }, [controller]);
+  }, []);
 
   const analyze = useCallback(async (file: File) => {
-    controller?.abort();
+    controllerRef.current?.abort();
     const next = new AbortController();
-    setController(next);
+    controllerRef.current = next;
     setState({ status: 'loading', data: null, error: null });
 
     try {
       const data = await analyzeProjectArchive(file, next.signal);
-      setState({ status: 'success', data, error: null });
+      if (controllerRef.current === next) {
+        setState({ status: 'success', data, error: null });
+      }
       return data;
     } catch (err) {
-      if ((err as Error).name === 'AbortError') return null;
-      setState({
-        status: 'error',
-        data: null,
-        error: (err as Error).message ?? 'Unknown error',
-      });
+      if (controllerRef.current === next && (err as Error).name !== 'AbortError') {
+        setState({
+          status: 'error',
+          data: null,
+          error: (err as Error).message ?? 'Unknown error',
+        });
+      }
       return null;
     }
-  }, [controller]);
+  }, []);
 
   useEffect(() => {
-    return () => controller?.abort();
-  }, [controller]);
+    return () => {
+      controllerRef.current?.abort();
+      controllerRef.current = null;
+    };
+  }, []);
 
   return { ...state, analyze, reset };
 }
