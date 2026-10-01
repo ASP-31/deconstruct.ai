@@ -252,38 +252,7 @@ deconstruct-ai/
 
 ---
 
-# 🗺 Development Sprint
 
-## ✅ Week 1 — AI Processing Engine
-
-- ZIP upload
-- File extraction
-- Ignore unnecessary folders
-- Parse file structure
-- Gemini prompt engineering
-- JSON schema generation
-
----
-
-## ✅ Week 2 — Interactive Workspace
-
-- Monaco Editor
-- File Explorer
-- Slide presentation UI
-- Architecture visualization
-- Responsive layout
-
----
-
-## ✅ Week 3 — Learning Experience
-
-- Slide ↔ Code synchronization
-- Line highlighting
-- Navigation logic
-- AI quiz generation
-- Deployment
-
----
 
 # 🎯 MVP Goals
 
@@ -414,16 +383,6 @@ It helps support development and motivates future improvements.
 
 ---
 
-# 🚀 Deployment
-
-## Vercel (Recommended)
-
-1. Push to GitHub
-2. Import project in [Vercel Dashboard](https://vercel.com/new)
-3. **Add Blob Storage**: Vercel Dashboard → Storage → Create → Blob
-4. Add environment variable:
-   - `GEMINI_API_KEY` (required)
-5. Deploy
 
 ### One-click Deploy
 
