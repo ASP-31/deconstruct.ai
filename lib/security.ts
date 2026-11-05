@@ -36,14 +36,31 @@ export function redactSecrets(input: string): string {
 
 export function sanitizeUserContent(input: string, maxLength = 200_000): string {
   const truncated = input.length > maxLength ? `${input.slice(0, maxLength)}\n…[truncated]` : input;
-  return redactSecrets(truncated)
-    .replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '');
+  return neutralizePromptFences(
+    redactSecrets(truncated).replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '')
+  );
 }
 
 const FENCE_LINES = [
   '<<<UNTRUSTED_CODE_BEGIN>>>',
   '<<<UNTRUSTED_CODE_END>>>',
 ];
+
+/** Marker/tag sequences that would let uploaded content break out of the
+ *  untrusted-data scaffolding in the analysis prompt. Anything matching is
+ *  replaced with plain text before the prompt is built. */
+const PROMPT_FENCE_PATTERNS: RegExp[] = [
+  /<{1,4}\s*UNTRUSTED_(?:CODE|FILE_TREE)\s*[A-Z]*\s*>{1,4}/gi,
+  /<\s*\/\s*UNTRUSTED_(?:CODE|FILE_TREE)\s*>/gi,
+];
+
+function neutralizePromptFences(input: string): string {
+  let output = input;
+  for (const pattern of PROMPT_FENCE_PATTERNS) {
+    output = output.replace(pattern, '[untrusted-marker]');
+  }
+  return output;
+}
 
 export function wrapUntrusted(content: string): string {
   return `${FENCE_LINES[0]}\n${content}\n${FENCE_LINES[1]}`;

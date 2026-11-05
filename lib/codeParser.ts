@@ -1,5 +1,4 @@
 import AdmZip from 'adm-zip';
-import * as fs from 'fs';
 import * as path from 'path';
 
 const IGNORED_DIRECTORIES = new Set([
@@ -233,9 +232,6 @@ export async function parseProjectZip(
 
     const ext = path.extname(relativePath).toLowerCase();
     if (IGNORED_EXTENSIONS.has(ext)) continue;
-    if (!TEXT_EXTENSIONS.has(ext) && !isProbablyText(entry.getData().subarray(0, 256))) {
-      continue;
-    }
 
     const headerSize = entry.header.size;
     if (headerSize > maxEntryBytes) continue;
@@ -301,5 +297,3 @@ function buildTreeString(paths: string[]): string {
 
   return renderTree(tree);
 }
-
-void fs;

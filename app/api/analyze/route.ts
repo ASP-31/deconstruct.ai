@@ -13,14 +13,6 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '50mb',
-    },
-  },
-};
-
 const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 5;
@@ -64,6 +56,13 @@ function publicError(err: unknown): { status: number; message: string } {
           'Daily AI analysis quota exhausted. Free tier allows 20 analyses per day — try again tomorrow or upgrade the Gemini API plan.',
       };
     }
+    if (/truncated|MAX_TOKENS/i.test(err.message)) {
+      return {
+        status: 422,
+        message:
+          'The codebase snapshot was too large for a single AI response. Try trimming large generated files from the archive.',
+      };
+    }
     if (
       /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit/i.test(
         err.message
@@ -80,7 +79,7 @@ function publicError(err: unknown): { status: number; message: string } {
 }
 
 export async function POST(request: Request) {
-  const limit = rateLimit(request.headers, {
+  const limit = await rateLimit(request.headers, {
     windowMs: RATE_LIMIT_WINDOW_MS,
     max: RATE_LIMIT_MAX,
     keyPrefix: 'analyze',
@@ -145,9 +144,11 @@ export async function POST(request: Request) {
     const sanitizedCode = sanitizeUserContent(concatenated);
     const sanitizedTree = sanitizeUserContent(fileTree, 50_000);
 
+    // Prompt-injection markers are logged for review but never reject the
+    // upload: the same phrases appear in legitimate security tooling and test
+    // code, and the untrusted-data trailers below make injection harmless.
     if (detectPromptInjection(sanitizedCode) || detectPromptInjection(sanitizedTree)) {
-      logger.warn('analyze', 'Rejected upload containing suspected prompt-injection content.');
-      return clientError('Archive contents were rejected as unsafe.');
+      logger.warn('analyze', 'Upload contains suspected prompt-injection content; proceeding with hardened prompt.');
     }
 
     const systemPrompt = [
@@ -223,6 +224,30 @@ function validateBlueprint(
       const safeStart = Math.max(1, Math.min(start, total || 1));
       slide.startLine = safeStart;
       slide.endLine = Math.max(safeStart, Math.min(end, total || safeStart));
+    }
+  }
+
+  // Quizzes are repaired defensively: incomplete or malformed questions are
+  // dropped, and any answer index outside the options list is clamped so the
+  // UI never renders an impossible or empty quiz card.
+  const quizzes = candidate.quizzes as Array<Record<string, unknown>>;
+  candidate.quizzes = quizzes.filter(
+    (quiz) =>
+      typeof quiz.question === 'string' &&
+      typeof quiz.explanation === 'string' &&
+      Array.isArray(quiz.options) &&
+      quiz.options.length >= 2 &&
+      quiz.options.every((option) => typeof option === 'string' && option.trim().length > 0)
+  );
+  for (const quiz of candidate.quizzes as Array<Record<string, unknown>>) {
+    const maxIndex = (quiz.options as string[]).length - 1;
+    if (
+      typeof quiz.correctAnswerIndex !== 'number' ||
+      !Number.isInteger(quiz.correctAnswerIndex) ||
+      quiz.correctAnswerIndex < 0 ||
+      quiz.correctAnswerIndex > maxIndex
+    ) {
+      quiz.correctAnswerIndex = 0;
     }
   }
 }

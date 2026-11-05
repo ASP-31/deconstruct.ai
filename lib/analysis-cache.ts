@@ -20,7 +20,14 @@ export function saveAnalysis(result: AnalysisResult): void {
 export function loadAnalysis(): AnalysisResult | null {
   if (memoryCache) return memoryCache;
 
-  const raw = sessionStorage.getItem(STORAGE_KEY);
+  // Storage can be entirely unavailable (Safari private mode, blocked cookies);
+  // treat that as a cache miss rather than throwing.
+  let raw: string | null = null;
+  try {
+    raw = sessionStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
   if (!raw) return null;
 
   try {
@@ -35,5 +42,9 @@ export function loadAnalysis(): AnalysisResult | null {
 
 export function clearAnalysis(): void {
   memoryCache = null;
-  sessionStorage.removeItem(STORAGE_KEY);
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore — nothing cached means nothing to clear
+  }
 }

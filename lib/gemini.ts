@@ -11,7 +11,9 @@ export function getAiClient(): GoogleGenAI {
   return cached;
 }
 
-const ANALYSIS_MODEL = 'gemini-flash-latest';
+// Primary model first; if it is saturated (persistent 503s), we degrade
+// gracefully to the next model instead of failing the whole analysis.
+const ANALYSIS_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
 const MAX_ATTEMPTS = 4;
 const TRANSIENT_PATTERN =
   /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit/i;
@@ -36,9 +38,10 @@ function isTransientModelError(err: unknown): boolean {
 }
 
 /**
- * Calls Gemini with retry + backoff. Google's model backends periodically
- * return transient 503 "high demand" / UNAVAILABLE errors; a short retry
- * loop absorbs the blips instead of failing the whole analysis.
+ * Calls Gemini with retry + backoff, then falls back to the next model in
+ * ANALYSIS_MODELS if the current one stays saturated. Google's model backends
+ * periodically return transient 503 "high demand" / UNAVAILABLE errors; the
+ * retry loop absorbs the blips and the fallback chain absorbs outages.
  */
 export async function generateAnalysisText(params: {
   systemInstruction: string;
@@ -46,37 +49,62 @@ export async function generateAnalysisText(params: {
 }): Promise<string> {
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    try {
-      const response = await getAiClient().models.generateContent({
-        model: ANALYSIS_MODEL,
-        contents: params.userPrompt,
-        config: {
-          systemInstruction: params.systemInstruction,
-          responseMimeType: 'application/json',
-          responseSchema: architectureResponseSchema,
-          temperature: 0.2,
-          maxOutputTokens: 8192,
-        },
-      });
+  for (const model of ANALYSIS_MODELS) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await getAiClient().models.generateContent({
+          model,
+          contents: params.userPrompt,
+          config: {
+            systemInstruction: params.systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: architectureResponseSchema,
+            temperature: 0.2,
+            maxOutputTokens: 8192,
+          },
+        });
 
-      const responseText = response.text;
-      if (!responseText) {
-        throw new Error('Empty operational payload returned from Gemini engine.');
+        const responseText = response.text;
+        if (!responseText) {
+          throw new Error('Empty operational payload returned from Gemini engine.');
+        }
+        // A truncated response yields invalid JSON for the caller; retrying
+        // within this request will not produce more tokens, so we surface a
+        // distinct non-transient error instead of letting JSON.parse fail.
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') {
+          throw new Error(
+            'Gemini output was truncated (MAX_TOKENS). The codebase snapshot is too large for a single response.'
+          );
+        }
+        if (model !== ANALYSIS_MODELS[0]) {
+          logger.warn('gemini', {
+            message: 'Served by fallback model',
+            model,
+          });
+        }
+        return responseText;
+      } catch (err) {
+        lastError = err;
+        const transient = isTransientModelError(err);
+        logger.warn('gemini', {
+          message: 'generateContent attempt failed',
+          model,
+          attempt,
+          transient,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        if (!transient || attempt === MAX_ATTEMPTS) break;
+        await delay(2000 * 2 ** (attempt - 1));
       }
-      return responseText;
-    } catch (err) {
-      lastError = err;
-      const transient = isTransientModelError(err);
-      logger.warn('gemini', {
-        message: 'generateContent attempt failed',
-        attempt,
-        transient,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      if (!transient || attempt === MAX_ATTEMPTS) break;
-      await delay(2000 * 2 ** (attempt - 1));
     }
+    // Non-transient failures (auth, bad request, quota exhaustion) will not
+    // improve by switching models — surface them immediately.
+    if (!isTransientModelError(lastError)) throw lastError;
+    logger.warn('gemini', {
+      message: 'Model exhausted after retries; falling back to next model',
+      exhaustedModel: model,
+    });
   }
 
   throw lastError;

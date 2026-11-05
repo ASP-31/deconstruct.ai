@@ -56,7 +56,7 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
           }
           setStatusText('Analyzing your project…');
 
-          const res = await fetch('/api/upload/complete', {
+          const res = await fetch('/api/analyze', {
             method: 'POST',
             body: formData,
           });
@@ -69,12 +69,20 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
           }
 
           lastError = data?.error ?? 'Analysis failed';
-          const retryable = res.status === 503 || res.status === 429;
-          if (!retryable) break;
+          if (res.status === 429) {
+            // Rate limited: surface the server's retry-after instead of
+            // re-sending into an exhausted quota.
+            const retryAfter = Number(res.headers.get('Retry-After') ?? '10');
+            const retryMessage = `Rate limited — slow down. Server says: ${retryAfter}s (daily free quota may also be exhausted).`;
+            setStatusText(retryMessage);
+            throw new Error(retryMessage);
+          }
+          // Only retry transient backend overload (503).
+          if (res.status !== 503) break;
         }
 
         throw new Error(lastError);
-      } catch (err) {
+      }        catch (err) {
         setError((err as Error).message ?? 'Unknown error');
       } finally {
         setLoading(false);
