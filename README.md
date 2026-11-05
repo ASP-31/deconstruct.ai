@@ -2,8 +2,6 @@
 
 > **Understand any codebase visually, interactively, and intelligently.**
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyour-username%2Fdeconstruct-ai&env=GEMINI_API_KEY,R2_ACCOUNT_ID,R2_ACCESS_KEY_ID,R2_SECRET_ACCESS_KEY,R2_BUCKET&envDescription=Required%20environment%20variables&envLink=https%3A%2F%2Fgithub.com%2Fyour-username%2Fdeconstruct-ai%23setting-up-cloudflare-r2)
-
 Deconstruct.ai is an AI-powered reverse engineering platform that transforms unfamiliar codebases into an interactive learning experience. Instead of spending hours navigating thousands of lines of legacy code, simply upload a project ZIP and let Deconstruct automatically analyze, visualize, and explain the architecture step by step.
 
 The platform parses the project structure, identifies execution entry points, analyzes application flow using the **Google Gemini API**, and generates synchronized architectural diagrams, interactive presentations, and contextual quizzes—all alongside the actual source code.
@@ -252,38 +250,7 @@ deconstruct-ai/
 
 ---
 
-# 🗺 Development Sprint
 
-## ✅ Week 1 — AI Processing Engine
-
-- ZIP upload
-- File extraction
-- Ignore unnecessary folders
-- Parse file structure
-- Gemini prompt engineering
-- JSON schema generation
-
----
-
-## ✅ Week 2 — Interactive Workspace
-
-- Monaco Editor
-- File Explorer
-- Slide presentation UI
-- Architecture visualization
-- Responsive layout
-
----
-
-## ✅ Week 3 — Learning Experience
-
-- Slide ↔ Code synchronization
-- Line highlighting
-- Navigation logic
-- AI quiz generation
-- Deployment
-
----
 
 # 🎯 MVP Goals
 
@@ -414,16 +381,6 @@ It helps support development and motivates future improvements.
 
 ---
 
-# 🚀 Deployment
-
-## Vercel (Recommended)
-
-1. Push to GitHub
-2. Import project in [Vercel Dashboard](https://vercel.com/new)
-3. **Add Blob Storage**: Vercel Dashboard → Storage → Create → Blob
-4. Add environment variable:
-   - `GEMINI_API_KEY` (required)
-5. Deploy
 
 ### One-click Deploy
 
