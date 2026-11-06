@@ -26,6 +26,7 @@ export function MonacoViewer({
   const monacoRef = useRef<typeof Monaco | null>(null);
   const decorationsRef = useRef<string[]>([]);
   const [ready, setReady] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +42,20 @@ export function MonacoViewer({
     };
   }, []);
 
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const onChange = () => setIsNarrow(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ minimap: { enabled: !isNarrow && value.length < 80_000 } });
+    }
+  }, [isNarrow, value.length]);
+
   const resolvedLanguage = language ?? detectLanguageFromPath(path);
 
   const handleMount = (editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) => {
@@ -49,16 +64,21 @@ export function MonacoViewer({
     editor.updateOptions({
       readOnly: true,
       fontSize: 13,
-      minimap: { enabled: false },
+      fontLigatures: true,
+      fontFamily: 'JetBrains Mono, Fira Code, monospace',
+      minimap: { enabled: !isNarrow && value.length < 80_000, maxColumn: 80 },
       scrollBeyondLastLine: false,
       smoothScrolling: true,
-      renderLineHighlight: 'all',
+      renderLineHighlight: 'line',
       lineNumbers: 'on',
       wordWrap: 'on',
       padding: { top: 12, bottom: 12 },
       contextmenu: false,
       occurrencesHighlight: 'off',
       selectionHighlight: false,
+      cursorBlinking: 'phase',
+      cursorSmoothCaretAnimation: 'on',
+      renderWhitespace: 'none',
     });
   };
 
@@ -87,11 +107,9 @@ export function MonacoViewer({
   }, [highlightLines, value, path]);
 
   return (
-    <div className={`h-full w-full ${className ?? ''}`}>
+    <div className={`bg-grid relative h-full w-full ${className ?? ''}`}>
       {!ready ? (
-        <div className="grid h-full place-items-center text-sm text-muted-foreground">
-          Loading editor…
-        </div>
+        <SkeletonEditor />
       ) : (
         <Editor
           height="100%"
@@ -100,14 +118,23 @@ export function MonacoViewer({
           language={resolvedLanguage}
           theme="vs-dark"
           onMount={handleMount}
-          loading={
-            <div className="grid h-full place-items-center text-sm text-muted-foreground">
-              Loading editor…
-            </div>
-          }
+          loading={<SkeletonEditor />}
           options={{ readOnly: true, domReadOnly: true }}
         />
       )}
+    </div>
+  );
+}
+
+function SkeletonEditor() {
+  return (
+    <div className="flex h-full flex-col gap-2 p-4" aria-busy="true" aria-label="Loading editor">
+      <div className="h-4 w-2/5 animate-pulse rounded bg-white/10" />
+      <div className="h-4 w-4/5 animate-pulse rounded bg-white/10" />
+      <div className="h-4 w-3/5 animate-pulse rounded bg-white/10" />
+      <div className="h-4 w-full animate-pulse rounded bg-white/5" />
+      <div className="h-4 w-2/3 animate-pulse rounded bg-white/10" />
+      <div className="h-4 w-1/2 animate-pulse rounded bg-white/10" />
     </div>
   );
 }
