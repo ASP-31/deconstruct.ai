@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useRef, useState } from 'react';
 import { ArrowUpFromLine, FileArchive, Loader2, Sparkles } from 'lucide-react';
+import { upload } from '@vercel/blob/client';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { saveAnalysis } from '@/lib/analysis-cache';
@@ -13,6 +14,7 @@ interface UploadZoneProps {
 }
 
 const MAX_BYTES = 500 * 1024 * 1024;
+const DIRECT_LIMIT = 4 * 1024 * 1024;
 
 export function UploadZone({ compact = false, className }: UploadZoneProps) {
   const router = useRouter();
@@ -21,6 +23,34 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState<string | null>(null);
+
+  const requestAnalysis = useCallback(
+    async (init: RequestInit, label: string) => {
+      const res = await fetch('/api/analyze', { method: 'POST', ...init });
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.blueprint) {
+        saveAnalysis(data);
+        router.push('/workspace');
+        return true;
+      }
+
+      const message = data?.error ?? 'Analysis failed';
+      if (res.status === 429) {
+        // Rate limited: surface the server's retry-after instead of
+        // re-sending into an exhausted quota.
+        const retryAfter = Number(res.headers.get('Retry-After') ?? '10');
+        throw new Error(`Rate limited — slow down. Server says: ${retryAfter}s (daily free quota may also be exhausted).`);
+      }
+
+      // Only retry transient backend overload (503) for the direct path.
+      if (res.status === 503 && label === 'direct') {
+        throw new Error('__RETRY_503__');
+      }
+      throw new Error(message);
+    },
+    [router]
+  );
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -38,52 +68,68 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
       setLoading(true);
 
       try {
-        const formData = new FormData();
-        formData.append('file', file);
+        // Direct multipart path for small files (keeps <=4MB uploads working
+        // even without Blob configured).
+        // Large files go browser -> Vercel Blob -> /api/analyze, so the 4.5MB
+        // Vercel request-body limit never applies.
+        if (file.size <= DIRECT_LIMIT) {
+          const formData = new FormData();
+          formData.append('file', file);
 
-        const MAX_CLIENT_RETRIES = 2;
-        let lastError = 'Analysis failed';
+          const MAX_CLIENT_RETRIES = 2;
+          let lastError = 'Analysis failed';
 
-        for (let attempt = 0; attempt <= MAX_CLIENT_RETRIES; attempt += 1) {
-          if (attempt > 0) {
-            const waitSeconds = 10 * attempt;
-            for (let remaining = waitSeconds; remaining > 0; remaining -= 1) {
-              setStatusText(
-                `AI backend is busy — retrying automatically in ${remaining}s (attempt ${attempt + 1} of ${MAX_CLIENT_RETRIES + 1})…`
-              );
-              await new Promise((resolve) => setTimeout(resolve, 1000));
+          for (let attempt = 0; attempt <= MAX_CLIENT_RETRIES; attempt += 1) {
+            if (attempt > 0) {
+              const waitSeconds = 10 * attempt;
+              for (let remaining = waitSeconds; remaining > 0; remaining -= 1) {
+                setStatusText(
+                  `AI backend is busy — retrying automatically in ${remaining}s (attempt ${attempt + 1} of ${MAX_CLIENT_RETRIES + 1})…`
+                );
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+              }
+            }
+            setStatusText('Analyzing your project…');
+            try {
+              const done = await requestAnalysis({ body: formData }, 'direct');
+              if (done) return;
+            } catch (err) {
+              lastError = (err as Error).message ?? 'Analysis failed';
+              if (lastError === '__RETRY_503__') continue;
+              throw err;
             }
           }
-          setStatusText('Analyzing your project…');
-
-          const res = await fetch('/api/analyze', {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await res.json().catch(() => null);
-
-          if (res.ok && data?.blueprint) {
-            saveAnalysis(data);
-            router.push('/workspace');
-            return;
-          }
-
-          lastError = data?.error ?? 'Analysis failed';
-          if (res.status === 429) {
-            // Rate limited: surface the server's retry-after instead of
-            // re-sending into an exhausted quota.
-            const retryAfter = Number(res.headers.get('Retry-After') ?? '10');
-            const retryMessage = `Rate limited — slow down. Server says: ${retryAfter}s (daily free quota may also be exhausted).`;
-            setStatusText(retryMessage);
-            throw new Error(retryMessage);
-          }
-          // Only retry transient backend overload (503).
-          if (res.status !== 503) break;
+          throw new Error(lastError);
         }
 
-        throw new Error(lastError);
-      }        catch (err) {
-        setError((err as Error).message ?? 'Unknown error');
+        // Large-file path: direct to Blob.
+        setStatusText('Uploading large file to Blob…');
+        const timestamp = Date.now();
+        const random = Math.random().toString(36).substring(2, 10);
+        const blob = await upload(`uploads/${timestamp}-${random}.zip`, file, {
+          access: 'private',
+          handleUploadUrl: '/api/upload/presign',
+          multipart: true,
+          onUploadProgress: ({ percentage }) => {
+            const pct = Math.round(percentage);
+            setStatusText(`Uploading… ${pct}%`);
+          },
+        });
+        setStatusText('Analyzing your project…');
+        await requestAnalysis(
+          {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ blobUrl: blob.url }),
+          },
+          'blob'
+        );
+      } catch (err) {
+        const message = (err as Error).message ?? 'Unknown error';
+        if (message === '__RETRY_503__') {
+          setError('The AI backend is temporarily overloaded. Please wait a moment and try again.');
+        } else {
+          setError(message);
+        }
       } finally {
         setLoading(false);
         setStatusText(null);
@@ -92,7 +138,7 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
         }
       }
     },
-    [router]
+    [requestAnalysis]
   );
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {

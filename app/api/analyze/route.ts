@@ -4,6 +4,7 @@ import { generateAnalysisText } from '@/lib/gemini';
 import { getRequiredEnv, hasEnv } from '@/lib/env';
 import { rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
+import { deleteBlob, fetchBlobBuffer, isBlobUrl, MAX_BLOB_BYTES } from '@/lib/blob';
 import {
   detectPromptInjection,
   sanitizeUserContent,
@@ -49,6 +50,16 @@ function publicError(err: unknown): { status: number; message: string } {
   if (err instanceof Error) {
     if (err.name === 'AbortError') return { status: 499, message: 'Request aborted.' };
     if (err.message.includes('API key')) return { status: 503, message: 'Service unavailable.' };
+    if (/fetch failed|ECONN|UND_ERR|timeout|timed out|deadline|network/i.test(err.message)) {
+      return {
+        status: 503,
+        message:
+          'The AI backend is temporarily unreachable. Please wait a moment and try again.',
+      };
+    }
+    if (err.message.includes('Blob not configured')) {
+      return { status: 503, message: 'Storage not configured for large uploads. Use a ZIP under 4MB.' };
+    }
     if (/PerDay|RESOURCE_EXHAUSTED|check your plan and billing/i.test(err.message)) {
       return {
         status: 429,
@@ -97,39 +108,55 @@ export async function POST(request: Request) {
     );
   }
 
+  let blobUrlToCleanup: string | null = null;
+
   try {
     ensureApiKey();
 
     const contentType = request.headers.get('content-type') ?? '';
-    if (!contentType.toLowerCase().includes('multipart/form-data')) {
-      return clientError('Expected a multipart/form-data upload.');
-    }
+    let buffer: Buffer;
 
-    const contentLengthHeader = request.headers.get('content-length');
-    if (contentLengthHeader && Number(contentLengthHeader) > MAX_REQUEST_BYTES) {
-      return clientError('Upload exceeds the 4MB limit (Vercel free tier).');
-    }
+    if (contentType.toLowerCase().includes('application/json')) {
+      const body = await request.json().catch(() => null);
+      const blobUrl = typeof body?.blobUrl === 'string' ? body.blobUrl : null;
+      if (!blobUrl || !isBlobUrl(blobUrl)) {
+        return clientError('Invalid blob URL. Upload the file first, then analyze it.');
+      }
+      blobUrlToCleanup = blobUrl;
+      logger.info('analyze', { message: 'Fetching blob for analysis', blobUrl });
+      buffer = await fetchBlobBuffer(blobUrl);
+      if (buffer.byteLength > MAX_BLOB_BYTES) {
+        return clientError('Upload exceeds the 500MB limit.');
+      }
+    } else if (contentType.toLowerCase().includes('multipart/form-data')) {
+      const contentLengthHeader = request.headers.get('content-length');
+      if (contentLengthHeader && Number(contentLengthHeader) > MAX_REQUEST_BYTES) {
+        return clientError('Upload exceeds the 4MB direct limit. Larger files upload via Blob first.');
+      }
 
-    let formData: FormData;
-    try {
-      formData = await request.formData();
-    } catch {
-      return clientError('Could not parse the uploaded form data.');
-    }
+      let formData: FormData;
+      try {
+        formData = await request.formData();
+      } catch {
+        return clientError('Could not parse the uploaded form data.');
+      }
 
-    const file = formData.get('file');
-    if (!(file instanceof File)) {
-      return clientError('No project archive file provided.');
-    }
-    if (!isAcceptableFile(file)) {
-      return clientError('Please upload a non-empty .zip archive under 4MB.');
-    }
+      const file = formData.get('file');
+      if (!(file instanceof File)) {
+        return clientError('No project archive file provided.');
+      }
+      if (!isAcceptableFile(file)) {
+        return clientError('Please upload a non-empty .zip archive under 4MB.');
+      }
 
-    const arrayBuffer = await file.arrayBuffer();
-    if (arrayBuffer.byteLength > MAX_REQUEST_BYTES) {
-      return clientError('Upload exceeds the 4MB limit (Vercel free tier).');
+      const arrayBuffer = await file.arrayBuffer();
+      if (arrayBuffer.byteLength > MAX_REQUEST_BYTES) {
+        return clientError('Upload exceeds the 4MB limit (Vercel free tier).');
+      }
+      buffer = Buffer.from(arrayBuffer);
+    } else {
+      return clientError('Expected a multipart/form-data or JSON request.');
     }
-    const buffer = Buffer.from(arrayBuffer);
 
     const { fileTree, files } = await parseProjectZip(buffer);
 
@@ -194,6 +221,10 @@ Produce: projectOverview, entryPoints, slides (title, description, targetFile, s
     logger.error('analyze', err);
     const { status, message } = publicError(err);
     return NextResponse.json({ error: message }, { status });
+  } finally {
+    if (blobUrlToCleanup) {
+      await deleteBlob(blobUrlToCleanup);
+    }
   }
 }
 

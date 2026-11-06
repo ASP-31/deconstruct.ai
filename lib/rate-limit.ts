@@ -1,4 +1,7 @@
 import 'server-only';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
+import { logger } from './logger';
 
 interface Bucket {
   windowStart: number;
@@ -10,11 +13,6 @@ interface Options {
   max: number;
   keyPrefix: string;
 }
-
-// NOTE: it is still essential to keep keying on a per-IP value. All in-memory
-// state in this module lives in the shared store instead, so the `Map` is only
-// kept as a small in-flight cache (unbounded, but the setter/key prefix keeps
-// the surface tiny).
 
 const buckets = new Map<string, Bucket>();
 
@@ -31,55 +29,59 @@ function clientKey(headers: Headers, prefix: string): string {
   return `${prefix}:${ip}`;
 }
 
-interface RateLimiterClient {
-  limit(key: string): Promise<{ success: boolean; remaining: number; reset: number }>;
+function hasRedis(): boolean {
+  return Boolean(
+    process.env.UPSTASH_REDIS_REST_URL || process.env.REDIS_URL
+  );
 }
 
-function createStoreClient(): RateLimiterClient {
-  // Graceful fallback: when no Redis URL is available, stay in the per-instance
-  // Map. This keeps local dev and isolated previews working, but each
-  // function instance enforces its own limits (see the REMOVE comments below
-  // for the production path).
-  if (process.env.REDIS_URL) {
-    const ratelimit = (globalThis as unknown as {
-      __upstash_ratelimit?: { Ratelimit: typeof import('@upstash/ratelimit')['Ratelimit'] };
-    }).__upstash_ratelimit;
-    const redis = (globalThis as unknown as {
-      __upstash_redis?: { Redis: typeof import('@upstash/redis')['Redis'] };
-    }).__upstash_redis;
-    const client = new ratelimit!.Ratelimit({
-      redis: redis!.Redis.fromEnv(),
-      prefix: 'dl-rate-limit',
-      limiter: ratelimit!.Ratelimit.slidingWindow(5, '1 m'),
-    });
-    return client;
+function createRedis(): Redis | null {
+  try {
+    if (process.env.UPSTASH_REDIS_REST_URL) {
+      return Redis.fromEnv();
+    }
+    const url = process.env.REDIS_URL;
+    if (url && url.startsWith('http')) {
+      return new Redis({
+        url,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN ?? '',
+      });
+    }
+    if (url) {
+      logger.warn('rate-limit', 'REDIS_URL is not an Upstash REST URL (must start with http); falling back to memory limiter.');
+    }
+    return null;
+  } catch (err) {
+    logger.warn('rate-limit', { message: 'Failed to create Redis client; falling back to memory', error: err instanceof Error ? err.message : String(err) });
+    return null;
   }
-  return {
-    async limit() {
-      return { success: true, remaining: 0, reset: 1 };
-    },
-  };
 }
 
-let storeClient: RateLimiterClient | null = null;
+const limiterCache = new Map<string, Ratelimit>();
 
-function getStoreClient(): RateLimiterClient {
-  if (!storeClient) {
-    storeClient = createStoreClient();
-  }
-  return storeClient;
+function getRatelimiter(max: number, windowMs: number): Ratelimit | null {
+  const cacheKey = `${max}|${windowMs}`;
+  const cached = limiterCache.get(cacheKey);
+  if (cached) return cached;
+
+  const redis = createRedis();
+  if (!redis) return null;
+
+  const minutes = windowMs / 60_000;
+  const limiter = new Ratelimit({
+    redis,
+    prefix: 'dl-rate-limit',
+    limiter:
+      minutes >= 1 && Number.isInteger(minutes)
+        ? Ratelimit.slidingWindow(max, `${minutes} m`)
+        : Ratelimit.slidingWindow(max, `${Math.round(windowMs / 1000)} s`),
+  });
+  limiterCache.set(cacheKey, limiter);
+  return limiter;
 }
 
-export async function rateLimit(headers: Headers, opts: Options): Promise<RateLimitResult> {
+function memoryLimit(headers: Headers, opts: Options): RateLimitResult {
   const key = clientKey(headers, opts.keyPrefix);
-
-  if (process.env.REDIS_URL) {
-    const client = getStoreClient();
-    const { success, remaining, reset } = await client.limit(key);
-    return { allowed: success, remaining, resetMs: reset * 1000 };
-  }
-
-  // In-memory-only fallback (no Redis URL): per-instance only.
   const now = Date.now();
   const existing = buckets.get(key);
   if (!existing || now - existing.windowStart >= opts.windowMs) {
@@ -91,4 +93,24 @@ export async function rateLimit(headers: Headers, opts: Options): Promise<RateLi
   }
   existing.count += 1;
   return { allowed: true, remaining: Math.max(0, opts.max - existing.count), resetMs: Math.max(0, opts.windowMs - (now - existing.windowStart)) };
+}
+
+export async function rateLimit(headers: Headers, opts: Options): Promise<RateLimitResult> {
+  if (!hasRedis()) {
+    return memoryLimit(headers, opts);
+  }
+
+  try {
+    const limiter = getRatelimiter(opts.max, opts.windowMs);
+    if (!limiter) return memoryLimit(headers, opts);
+    const key = clientKey(headers, opts.keyPrefix);
+    const { success, remaining, reset } = await limiter.limit(key);
+    // Upstash `reset` is a Unix timestamp in ms.
+    const resetMs = Math.max(0, reset - Date.now());
+    return { allowed: success, remaining, resetMs };
+  } catch (err) {
+    // Fail-open: Redis outage must not take down uploads.
+    logger.warn('rate-limit', { message: 'Redis limit failed; failing open to memory limiter', error: err instanceof Error ? err.message : String(err) });
+    return memoryLimit(headers, opts);
+  }
 }

@@ -13,10 +13,12 @@ export function getAiClient(): GoogleGenAI {
 
 // Primary model first; if it is saturated (persistent 503s), we degrade
 // gracefully to the next model instead of failing the whole analysis.
+// Kept at 3 attempts/model so total worst-case stays under Vercel's 60s
+// function timeout (a successful fallback took 53s in dev logs).
 const ANALYSIS_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
-const MAX_ATTEMPTS = 4;
+const MAX_ATTEMPTS = 3;
 const TRANSIENT_PATTERN =
-  /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit/i;
+  /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit|fetch failed|network|timeout|timed out|deadline|ECONNRESET|ECONNABORTED|ETIMEDOUT|UND_ERR|EPIPE|ENOTFOUND|EAI_AGAIN/i;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -28,13 +30,27 @@ function isTransientModelError(err: unknown): boolean {
     if (typeof status === 'number' && [429, 500, 502, 503, 504].includes(status)) {
       return true;
     }
+    // Abort / network blips (fetch failed, timeouts) are worth retrying.
+    const cause = (err as { cause?: unknown }).cause;
+    if (cause && typeof cause === 'object') {
+      const code = (cause as { code?: unknown }).code;
+      if (typeof code === 'string' && /ECONN|ETIMEDOUT|UND_ERR|EPIPE|ENOTFOUND|EAI_AGAIN/.test(code)) {
+        return true;
+      }
+      const causeMessage = (cause as { message?: unknown }).message;
+      if (typeof causeMessage === 'string' && TRANSIENT_PATTERN.test(causeMessage)) return true;
+    }
   }
   const message = err instanceof Error ? err.message : String(err ?? '');
   // Daily quota exhaustion cannot be retried away within a request.
   if (/PerDay|quotaMetric|RESOURCE_EXHAUSTED|check your plan and billing/i.test(message)) {
     return false;
   }
-  return TRANSIENT_PATTERN.test(message);
+  // Deterministic bad-request errors won't improve with retries.
+  if (/MAX_TOKENS|truncated|Invalid|Schema|API key not valid/i.test(message) && !/fetch failed/i.test(message)) {
+    return false;
+  }
+  return TRANSIENT_PATTERN.test(message) || /fetch failed|TypeError: fetch/i.test(message);
 }
 
 /**
