@@ -11,11 +11,16 @@ export function getAiClient(): GoogleGenAI {
   return cached;
 }
 
-// Primary model first; if it is saturated (persistent 503s), we degrade
-// gracefully to the next model instead of failing the whole analysis.
-// Kept at 3 attempts/model so total worst-case stays under Vercel's 60s
-// function timeout (a successful fallback took 53s in dev logs).
-const ANALYSIS_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
+// Lite first (faster, less saturated) with full flash as fallback.
+// Env override: set GEMINI_MODEL=gemini-flash-latest to flip order.
+function resolveModels(): string[] {
+  const override = process.env.GEMINI_MODEL?.trim();
+  const defaults = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+  if (override && !defaults.includes(override)) return [override, ...defaults];
+  if (override) return [override, ...defaults.filter((m) => m !== override)];
+  return defaults;
+}
+export const ANALYSIS_MODELS = resolveModels();
 const MAX_ATTEMPTS = 3;
 const TRANSIENT_PATTERN =
   /\b(429|500|502|503|504)\b|UNAVAILABLE|overloaded|high demand|rate.?limit|fetch failed|network|timeout|timed out|deadline|ECONNRESET|ECONNABORTED|ETIMEDOUT|UND_ERR|EPIPE|ENOTFOUND|EAI_AGAIN/i;
@@ -76,7 +81,7 @@ export async function generateAnalysisText(params: {
             responseMimeType: 'application/json',
             responseSchema: architectureResponseSchema,
             temperature: 0.2,
-            maxOutputTokens: 8192,
+            maxOutputTokens: 4096,
           },
         });
 

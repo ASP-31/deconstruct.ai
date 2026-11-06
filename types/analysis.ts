@@ -28,6 +28,7 @@ export interface ArchitectureBlueprint {
 export interface AnalysisResult {
   blueprint: ArchitectureBlueprint;
   extractedFiles: ExtractedFile[];
+  cached?: boolean;
 }
 
 export interface AnalysisError {

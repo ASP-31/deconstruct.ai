@@ -226,6 +226,18 @@ export async function parseProjectZip(
 
     if (segments.some((segment) => IGNORED_DIRECTORIES.has(segment))) continue;
     if (segments.some((segment) => IGNORED_FILES.has(segment.toLowerCase()))) continue;
+    // Generated/minified artifacts: skip before decompress — huge prompt bloat.
+    const lowerPath = relativePath.toLowerCase();
+    if (
+      lowerPath.endsWith('.min.js') ||
+      lowerPath.endsWith('.min.css') ||
+      lowerPath.endsWith('.js.map') ||
+      lowerPath.endsWith('.css.map') ||
+      /(^|\/)package-lock\.json$/.test(lowerPath) ||
+      /(^|\/)(pnpm-lock\.yaml|yarn\.lock|bun\.lock|bun\.lockb)$/.test(lowerPath)
+    ) {
+      continue;
+    }
     // Never ship env/secret files to the AI backend.
     const baseName = (segments[segments.length - 1] ?? '').toLowerCase();
     if (baseName === '.env' || baseName.startsWith('.env.')) continue;

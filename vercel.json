@@ -1,7 +1,17 @@
 {
   "functions": {
     "app/api/analyze/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 1024,
+      "regions": ["iad1"]
+    },
+    "app/api/cache-check/route.ts": {
+      "maxDuration": 10,
+      "regions": ["iad1"]
+    },
+    "app/api/upload/presign/route.ts": {
+      "maxDuration": 10,
+      "regions": ["iad1"]
     }
   }
 }

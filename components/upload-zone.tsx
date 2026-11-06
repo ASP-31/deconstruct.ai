@@ -52,6 +52,33 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
     [router]
   );
 
+  const checkCache = useCallback(
+    async (file: File): Promise<boolean> => {
+      // Skip pre-check for very large files (arrayBuffer would OOM).
+      if (file.size > 100 * 1024 * 1024) return false;
+      try {
+        const buffer = await file.arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        const fileHash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+        const res = await fetch('/api/cache-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileHash }),
+        });
+        const data = await res.json().catch(() => null);
+        if (res.ok && data?.hit && data?.blueprint) {
+          saveAnalysis({ blueprint: data.blueprint, extractedFiles: data.extractedFiles ?? [], cached: true });
+          router.push('/workspace');
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      }
+    },
+    [router]
+  );
+
   const handleFile = useCallback(
     async (file: File) => {
       setError(null);
@@ -68,6 +95,9 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
       setLoading(true);
 
       try {
+        setStatusText('Checking cache…');
+        if (await checkCache(file)) return;
+
         // Direct multipart path for small files (keeps <=4MB uploads working
         // even without Blob configured).
         // Large files go browser -> Vercel Blob -> /api/analyze, so the 4.5MB
@@ -138,7 +168,7 @@ export function UploadZone({ compact = false, className }: UploadZoneProps) {
         }
       }
     },
-    [requestAnalysis]
+    [requestAnalysis, checkCache]
   );
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
